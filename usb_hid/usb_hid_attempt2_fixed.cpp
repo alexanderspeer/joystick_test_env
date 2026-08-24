@@ -13,6 +13,31 @@
 
 
 
+// Bash CMDs
+
+// g++ usb_hid_attempt2_fixed.cpp \
+  -std=c++17 \
+  -IC:/msys64/ucrt64/include/SDL2 \
+  -LC:/msys64/ucrt64/lib \
+  -lmingw32 -lSDL2main -lSDL2 \
+  -o usb_hid_attempt2_fixed.exe
+
+
+// run
+// ./usb_hid_attempt2_fixed.exe
+
+
+
+
+
+
+
+
+
+
+
+
+
 // PERONAL INFORMATION:
 
 // g++ usb_hid_attempt2_fixed.cpp -std=c++17 -IC:\msys64\ucrt64\include\SDL2 -LC:\msys64\ucrt64\lib -lSDL2 -o usb_hid_attempt2_fixed.exe

@@ -1,0 +1,11 @@
+trial,block,condition,target_index,reaction_time_ms,movement_time_ms,total_time_ms,success
+1,1,automatic,7,1349.31,3297.44,4646.74,1
+2,1,automatic,0,865.759,266.646,1132.4,1
+3,1,automatic,2,881.933,199.876,1081.81,1
+4,1,automatic,2,649.071,133.724,782.795,1
+5,1,automatic,0,766.488,798.938,1565.43,1
+6,2,controlled,1,1149.36,2214.8,3364.15,1
+7,2,controlled,2,1248.94,333.451,1582.4,1
+8,2,controlled,4,966.064,266.354,1232.42,1
+9,2,controlled,1,717.441,1098.1,1815.54,1
+10,2,controlled,7,1299.27,2364.61,3663.88,1

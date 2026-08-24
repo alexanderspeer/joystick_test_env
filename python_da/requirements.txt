@@ -1,0 +1,6 @@
+mne
+scipy
+numpy
+matplotlib
+pandas
+BCI2000Tools

@@ -1,6 +1,6 @@
 #include <SDL.h>
+#include <windows.h>
 
-// g++ block_visuomotor_task_usb_hid.cpp -std=c++17 $(sdl2-config --cflags --libs) -o block_visuomotor_task_usb_hid.exe
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -8,9 +8,10 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <string>
 
-// g++ usb_hid_attempt2.cpp -std=c++17 -IC:\msys64\ucrt64\include\SDL2 -LC:\msys64\ucrt64\lib -lmingw32 -lSDL2main -lSDL2 -o usb_hid_attempt2.exe
+//g++ block_visuomotor_task_windows_fixed.cpp -std=c++17 $(sdl2-config --cflags --libs) -o block_visuomotor_task_windows.exe
 
 // ------------------------------------------------------------
 // Block-based visuomotor joystick task for Windows.
@@ -18,14 +19,13 @@
 // Block 1: 5 automatic trials with normal cursor mapping.
 // Block 2: 5 controlled trials with inverted cursor mapping.
 //
-// Input: USB HID joystick read directly through SDL2.
-// Preferred device: VID 068E, PID 019B.
+// Arduino serial format:
+//     x,y,sw
 //
-// SDL joystick axes are converted from -32768..32767 to 0..1023
-// so the rest of the task uses the same coordinate system as the
-// original Arduino implementation.
+// Arduino baud rate:
+//     Serial.begin(9600);
 //
-// Joystick button 0 is read but is not used to choose condition.
+// The joystick switch is read but is not used to choose condition.
 // ------------------------------------------------------------
 
 constexpr int WINDOW_WIDTH = 1000;
@@ -77,104 +77,176 @@ struct JoystickState
 using Clock = std::chrono::steady_clock;
 using TimePoint = Clock::time_point;
 
-constexpr Uint16 TARGET_VENDOR_ID = 0x068E;
-constexpr Uint16 TARGET_PRODUCT_ID = 0x019B;
+std::string serialBuffer;
 
-int hidAxisToArduinoRange(Sint16 axisValue)
+double secondsSince(const TimePoint& start)
 {
-    const int shifted = static_cast<int>(axisValue) + 32768;
-    return static_cast<int>(
-        (static_cast<long long>(shifted) * JOYSTICK_MAX) / 65535
+    return std::chrono::duration<double>(Clock::now() - start).count();
+}
+
+double millisecondsBetween(const TimePoint& start, const TimePoint& end)
+{
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+const char* conditionName(Condition condition)
+{
+    return condition == Condition::Automatic
+        ? "automatic"
+        : "controlled";
+}
+
+HANDLE openSerialPort(const std::string& portName)
+{
+    const std::string fullPortName = "\\\\.\\" + portName;
+
+    HANDLE serialHandle = CreateFileA(
+        fullPortName.c_str(),
+        GENERIC_READ,
+        0,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
     );
+
+    if (serialHandle == INVALID_HANDLE_VALUE)
+    {
+        std::cerr
+            << "Could not open " << portName
+            << ". Windows error code: "
+            << GetLastError()
+            << "\\n";
+
+        return INVALID_HANDLE_VALUE;
+    }
+
+    DCB serialParameters{};
+    serialParameters.DCBlength = sizeof(serialParameters);
+
+    if (!GetCommState(serialHandle, &serialParameters))
+    {
+        std::cerr << "Could not read serial-port settings.\\n";
+        CloseHandle(serialHandle);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    serialParameters.BaudRate = CBR_9600;
+    serialParameters.ByteSize = 8;
+    serialParameters.StopBits = ONESTOPBIT;
+    serialParameters.Parity = NOPARITY;
+    serialParameters.fBinary = TRUE;
+    serialParameters.fDtrControl = DTR_CONTROL_ENABLE;
+    serialParameters.fRtsControl = RTS_CONTROL_ENABLE;
+
+    if (!SetCommState(serialHandle, &serialParameters))
+    {
+        std::cerr << "Could not configure serial port.\\n";
+        CloseHandle(serialHandle);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    COMMTIMEOUTS timeouts{};
+    timeouts.ReadIntervalTimeout = MAXDWORD;
+    timeouts.ReadTotalTimeoutConstant = 0;
+    timeouts.ReadTotalTimeoutMultiplier = 0;
+
+    if (!SetCommTimeouts(serialHandle, &timeouts))
+    {
+        std::cerr << "Could not configure serial timeouts.\\n";
+        CloseHandle(serialHandle);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    PurgeComm(serialHandle, PURGE_RXCLEAR | PURGE_TXCLEAR);
+    return serialHandle;
 }
 
-SDL_Joystick* openUsbHidJoystick()
+bool parseJoystickLine(const std::string& line, JoystickState& joystick)
 {
-    const int joystickCount = SDL_NumJoysticks();
+    std::stringstream stream(line);
 
-    if (joystickCount <= 0)
+    std::string xText;
+    std::string yText;
+    std::string buttonText;
+
+    if (!std::getline(stream, xText, ',') ||
+        !std::getline(stream, yText, ',') ||
+        !std::getline(stream, buttonText, ','))
     {
-        std::cerr << "No SDL joystick devices were detected.\n";
-        return nullptr;
+        return false;
     }
 
-    std::cout << "Detected " << joystickCount << " joystick device(s):\n";
-
-    int selectedIndex = -1;
-
-    for (int i = 0; i < joystickCount; ++i)
+    try
     {
-        const Uint16 vendor = SDL_JoystickGetDeviceVendor(i);
-        const Uint16 product = SDL_JoystickGetDeviceProduct(i);
-        const char* name = SDL_JoystickNameForIndex(i);
+        const int newX = std::stoi(xText);
+        const int newY = std::stoi(yText);
+        const int newButton = std::stoi(buttonText);
 
-        std::cout
-            << "  [" << i << "] "
-            << (name != nullptr ? name : "Unknown joystick")
-            << " | VID: 0x" << std::hex << vendor
-            << " | PID: 0x" << product
-            << std::dec << "\n";
-
-        if (vendor == TARGET_VENDOR_ID && product == TARGET_PRODUCT_ID)
+        if (newX < JOYSTICK_MIN || newX > JOYSTICK_MAX ||
+            newY < JOYSTICK_MIN || newY > JOYSTICK_MAX ||
+            (newButton != 0 && newButton != 1))
         {
-            selectedIndex = i;
+            return false;
         }
-    }
 
-    if (selectedIndex < 0)
+        joystick.x = newX;
+        joystick.y = newY;
+        joystick.button = newButton;
+        return true;
+    }
+    catch (...)
     {
-        std::cerr
-            << "Could not find the expected USB HID joystick "
-            << "VID 068E / PID 019B.\n";
-        return nullptr;
+        return false;
     }
-
-    SDL_Joystick* joystick = SDL_JoystickOpen(selectedIndex);
-
-    if (joystick == nullptr)
-    {
-        std::cerr
-            << "Could not open USB HID joystick: "
-            << SDL_GetError() << "\n";
-        return nullptr;
-    }
-
-    if (SDL_JoystickNumAxes(joystick) < 2)
-    {
-        std::cerr << "Joystick does not expose at least two axes.\n";
-        SDL_JoystickClose(joystick);
-        return nullptr;
-    }
-
-    std::cout
-        << "Using joystick: "
-        << SDL_JoystickName(joystick)
-        << " | axes=" << SDL_JoystickNumAxes(joystick)
-        << " | buttons=" << SDL_JoystickNumButtons(joystick)
-        << "\n";
-
-    return joystick;
 }
 
-void readUsbHidJoystick(
-    SDL_Joystick* device,
+void readSerialData(
+    HANDLE serialHandle,
     JoystickState& joystick
 )
 {
-    SDL_JoystickUpdate();
+    char incoming[256];
+    DWORD bytesRead = 0;
 
-    joystick.x = hidAxisToArduinoRange(
-        SDL_JoystickGetAxis(device, 0)
-    );
+    while (true)
+    {
+        if (!ReadFile(
+                serialHandle,
+                incoming,
+                sizeof(incoming),
+                &bytesRead,
+                nullptr
+            ))
+        {
+            break;
+        }
 
-    joystick.y = hidAxisToArduinoRange(
-        SDL_JoystickGetAxis(device, 1)
-    );
+        if (bytesRead == 0)
+        {
+            break;
+        }
 
-    joystick.button =
-        SDL_JoystickNumButtons(device) > 0
-            ? static_cast<int>(SDL_JoystickGetButton(device, 0))
-            : 0;
+        for (DWORD i = 0; i < bytesRead; ++i)
+        {
+            const char character = incoming[i];
+
+            if (character == '\n')
+            {
+                parseJoystickLine(serialBuffer, joystick);
+                serialBuffer.clear();
+            }
+            else if (character != '\r')
+            {
+                serialBuffer += character;
+
+                if (serialBuffer.size() > 100)
+                {
+                    serialBuffer.clear();
+                }
+            }
+        }
+    }
 }
 
 int mapValue(int value, int outputMinimum, int outputMaximum)
@@ -254,10 +326,12 @@ std::array<SDL_Point, 8> makeTargetPositions()
     const int centerX = WINDOW_WIDTH / 2;
     const int centerY = WINDOW_HEIGHT / 2;
 
+    constexpr double PI = 3.14159265358979323846;
+
     for (int i = 0; i < 8; ++i)
     {
         const double angle =
-            -M_PI / 2.0 + i * (2.0 * M_PI / 8.0);
+            -PI / 2.0 + i * (2.0 * PI / 8.0);
 
         targets[i].x =
             centerX +
@@ -273,23 +347,29 @@ std::array<SDL_Point, 8> makeTargetPositions()
 
 int main()
 {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0)
+    const std::string portName = "COM3";
+
+    HANDLE serialHandle = openSerialPort(portName);
+
+    if (serialHandle == INVALID_HANDLE_VALUE)
+    {
+        std::cerr
+            << "Check the serial port name and close "
+            << "the Arduino Serial Monitor.\n";
+        return 1;
+    }
+
+    Sleep(2000);
+    PurgeComm(serialHandle, PURGE_RXCLEAR | PURGE_TXCLEAR);
+
+    if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
         std::cerr
             << "SDL initialization failed: "
             << SDL_GetError()
             << "\n";
 
-        return 1;
-    }
-
-    SDL_JoystickEventState(SDL_ENABLE);
-
-    SDL_Joystick* hidJoystick = openUsbHidJoystick();
-
-    if (hidJoystick == nullptr)
-    {
-        SDL_Quit();
+        CloseHandle(serialHandle);
         return 1;
     }
 
@@ -309,7 +389,7 @@ int main()
             << SDL_GetError()
             << "\n";
 
-        SDL_JoystickClose(hidJoystick);
+        CloseHandle(serialHandle);
         SDL_Quit();
         return 1;
     }
@@ -329,23 +409,23 @@ int main()
             << "\n";
 
         SDL_DestroyWindow(window);
-        SDL_JoystickClose(hidJoystick);
+        CloseHandle(serialHandle);
         SDL_Quit();
         return 1;
     }
 
     std::ofstream resultsFile(
-        "block_visuomotor_results_usb_hid.csv"
+        "block_visuomotor_results_windows.csv"
     );
 
     if (!resultsFile)
     {
         std::cerr
-            << "Could not create block_visuomotor_results_usb_hid.csv\n";
+            << "Could not create block_visuomotor_results_windows.csv\n";
 
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
-        SDL_JoystickClose(hidJoystick);
+        CloseHandle(serialHandle);
         SDL_Quit();
         return 1;
     }
@@ -399,16 +479,9 @@ int main()
             {
                 running = false;
             }
-
-            if (event.type == SDL_JOYDEVICEREMOVED &&
-                event.jdevice.which == SDL_JoystickInstanceID(hidJoystick))
-            {
-                std::cerr << "Joystick disconnected.\n";
-                running = false;
-            }
         }
 
-        readUsbHidJoystick(hidJoystick, joystick);
+        readSerialData(serialHandle, joystick);
 
         if (phase == TrialPhase::Finished)
         {
@@ -716,12 +789,12 @@ int main()
     resultsFile.close();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
-    SDL_JoystickClose(hidJoystick);
+    CloseHandle(serialHandle);
     SDL_Quit();
 
     std::cout
         << "Task complete. Results saved to "
-        << "block_visuomotor_results_usb_hid.csv\n";
+        << "block_visuomotor_results_windows.csv\n";
 
     return 0;
 }

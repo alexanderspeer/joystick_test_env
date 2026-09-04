@@ -1,0 +1,2 @@
+file,recording_format,n_completed_trials,automatic_mean_rt_ms,controlled_mean_rt_ms,controlled_minus_automatic_ms,ordered_automatic_mean_rt_ms,ordered_controlled_mean_rt_ms,ordered_controlled_minus_automatic_ms,pseudorandom_automatic_mean_rt_ms,pseudorandom_controlled_mean_rt_ms,pseudorandom_controlled_minus_automatic_ms
+ECOGS001R02.dat,legacy,8000,728.7,839.65,110.94999999999993,564.8,584.5,19.700000000000045,783.3333333333334,924.7,141.36666666666667

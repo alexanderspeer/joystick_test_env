@@ -4,3 +4,4 @@ numpy
 matplotlib
 pandas
 BCI2000Tools
+Jupyter

@@ -1,0 +1,85 @@
+{
+    "profile_name": "VisuomotorJoystickTask",
+    "profile_version": "1.0.0",
+  
+    "streams": {
+      "motion": {
+        "output": "motion",
+        "states": {
+          "JoystickXpos": {
+            "column": "joystick_x",
+            "units": "a.u."
+          },
+          "JoystickYpos": {
+            "column": "joystick_y",
+            "units": "a.u."
+          },
+          "CursorX": {
+            "column": "cursor_x",
+            "units": "a.u."
+          },
+          "CursorY": {
+            "column": "cursor_y",
+            "units": "a.u."
+          },
+          "TargetX": {
+            "column": "target_x",
+            "units": "a.u."
+          },
+          "TargetY": {
+            "column": "target_y",
+            "units": "a.u."
+          }
+        }
+      },
+  
+      "events": {
+        "output": "events.tsv",
+        "states": {
+          "JoystickButtons1": {
+            "column": "joystick_button"
+          },
+          "TaskPhase": {
+            "column": "task_phase"
+          },
+          "TaskCondition": {
+            "column": "task_condition"
+          },
+          "TaskBlockType": {
+            "column": "task_block_type"
+          },
+          "TaskBlock": {
+            "column": "block"
+          },
+          "TaskTrial": {
+            "column": "trial"
+          },
+          "MovementStarted": {
+            "column": "movement_started"
+          },
+          "TargetHit": {
+            "column": "target_hit"
+          },
+          "ReactionTimeMs": {
+            "column": "reaction_time",
+            "units": "ms"
+          },
+          "MovementTimeMs": {
+            "column": "movement_time",
+            "units": "ms"
+          },
+          "TotalTimeMs": {
+            "column": "total_time",
+            "units": "ms"
+          }
+        }
+      }
+    },
+  
+    "ignore": [
+      "__pad0",
+      "__pad1",
+      "__pad2",
+      "__pad3"
+    ]
+  }

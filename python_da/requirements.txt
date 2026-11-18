@@ -7,3 +7,4 @@ BCI2000Tools
 Jupyter
 nbconvert
 sklearn
+pyedflib

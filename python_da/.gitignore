@@ -1,3 +1,10 @@
 *.dat
+patient_data
+
+BIDS_env/
+
+parsed_data
+
+*.edf
 
 .venv

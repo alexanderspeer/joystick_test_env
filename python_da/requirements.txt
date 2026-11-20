@@ -9,3 +9,5 @@ nbconvert
 scikit-learn
 pyedflib
 ipykernel
+nibabel
+nilearn
